@@ -1,0 +1,154 @@
+/*README
+ 이 코드는 원본이미지(RGB)를 reference 이미지를 활용하여 이미지 histogram matching을 진행한다.
+결과로 reference이미지와 intensity가 유사하게 이미지가 출력된다.
+
+input: 원본이미지(RGB), reference이미지(RGB)
+output: matched이미지, PDF, Transform_eq.txt */
+
+#include "hist_func.h"
+
+void cal_trans_func( G *trans_func, float *CDF);
+
+
+void hist_match(G *trans, G *trans_ref, Mat & matched, Mat &input_ref_gray,float *CDF, float*CDF_ref);
+
+int main() {
+
+	Mat input = imread("koala.jpg", IMREAD_UNCHANGED);  // 원본이미지
+    Mat ref_input= imread("koala_ref.jpg",IMREAD_UNCHANGED); // reference 이미지
+    Mat matched_YUV;
+    Mat matched_ref_YUV;
+    Mat out;
+    
+   
+
+	cvtColor(input , matched_YUV, COLOR_RGB2YUV);	// convert RGB to Grayscale
+    cvtColor(ref_input , matched_ref_YUV, COLOR_RGB2YUV);    // convert RGB to Grayscale
+
+	Mat channels[3];
+    split(matched_YUV, channels);  // Y,U,V로 채널 나눔
+    Mat Y = channels[0];  //Y채널에 대해서만 진행
+    
+    Mat channels_r[3];
+    split(matched_ref_YUV, channels_r); // Y,U,V로 채널 나눔
+    Mat Y_r = channels_r[0];  //Y채널에 대해서만 진행
+
+	FILE *f_matched_PDF_YUV, *f_PDF_RGB,*f_PDF_ref_RGB;
+    FILE *f_trans_func_eq_YUV;
+    
+    f_PDF_RGB= fopen("PDF_RGB.txt", "w+");   //원본이미지 (PDF)
+    f_PDF_ref_RGB= fopen( "PDF_ref_RGB.txt", "w+");  //reference 이미지 (PDF)
+    f_matched_PDF_YUV= fopen( "matched_PDF_YUV.txt", "w+");  //matched된 이미지 (PDF)
+
+    f_trans_func_eq_YUV=fopen( "trans_func_eq_YUV.txt", "w+");
+
+
+	float **PDF_RGB = cal_PDF_RGB(input);  // PDF of Input image(RGB) : [L][3]
+    float *CDF_YUV = cal_CDF(Y);
+    
+    float **PDF_ref_RGB = cal_PDF_RGB(ref_input);  // PDF of Input image(RGB) : [L][3]
+    float *CDF_ref_YUV = cal_CDF(Y_r);
+   
+    G trans[L] = { 0 };            // transfer function
+    G trans_ref[L] = { 0 };            // transfer reference function
+
+	
+   hist_match(trans, trans_ref, Y, Y ,CDF_YUV, CDF_ref_YUV); // histogram matching
+    merge(channels, 3, matched_YUV); // merge Y, U, V channels
+    merge(channels_r, 3, matched_ref_YUV); // merge Y, U, V channels
+      
+    cvtColor( matched_YUV,out, COLOR_YUV2RGB); // YUV ->  RGB
+    
+    float **matched_PDF=cal_PDF_RGB(out); // matched PDF (YUV)
+    
+    for (int i = 0; i < L; i++) {
+           for(int j=0;j<3;j++)
+           {
+                   fprintf(f_PDF_RGB, "%d\t%f\n", i, PDF_RGB[i][j]);
+                   fprintf(f_PDF_ref_RGB, "%d\t%f\n", i, PDF_ref_RGB[i][j]);
+                   fprintf(f_matched_PDF_YUV, "%d\t%f\n", i, matched_PDF[i][j]);
+           }
+           
+               fprintf(f_trans_func_eq_YUV, "%d\t%d\n", i, trans_ref[i]); //transfrom function
+       }
+
+       // memory release
+       free(PDF_RGB);
+       free(CDF_YUV);
+       fclose(f_PDF_RGB);
+       fclose(f_matched_PDF_YUV);
+       fclose(f_trans_func_eq_YUV);
+
+	////////////////////// Show each image ///////////////////////
+
+	namedWindow("Grayscale", WINDOW_AUTOSIZE);
+	imshow("Grayscale", input);   // RGB원본이미지
+
+	namedWindow("Matched", WINDOW_AUTOSIZE); //matched된 이미지
+	imshow("Matched", out);
+
+	//////////////////////////////////////////////////////////////
+
+	waitKey(0);
+
+	return 0;
+}
+
+
+void hist_match(G *trans, G *trans_ref,Mat &matched, Mat &input, float *CDF, float*CDF_ref){
+    
+    int G_inv[L]={0};  //G-1
+    bool check[L]={false}; // 값이 대응되어있는지
+    
+    
+    for (int i = 0; i < L; i++)
+    {
+         trans[i] = (G)((L - 1) * CDF[i]);  // s=T(r)=(L-1)CDFr(r) 공식 이용
+          trans_ref[i] = (G)((L - 1) * CDF_ref[i]);  // s=G(z)=(L-1)CDFr(r) 공식 이용
+
+    }
+   
+    // z=G-1(s) 계산하기
+    for(int i=0;i<L;i++) //i는 s
+    {
+          // s값에 대응되는 z값 찾기
+            for(int j=0;j<L;j++) // s가 값이 있는 경우
+            {
+                if(trans_ref[j]==i && check[i]==false) // 여러 z값이 있는 경우 첫 번째거 택한다.
+                {
+                   G_inv[i]=j;
+                    check[i]=true;
+                    break;
+                }
+                
+                    
+                
+            }
+            if(check[i]==false) // s에 대응되는 값이 없는 경우 neighboring하는 거랑 연결
+                G_inv[i]=G_inv[i-1];
+        
+    }
+
+    // perform the transfer function
+    
+        for (int i = 0; i < input.rows; i++)
+            for (int j = 0; j < input.cols; j++)
+            {
+             
+               matched.at<G>(i, j) =G_inv[trans[input.at<G>(i, j)]];  // intensity 변경
+               
+            
+            }
+    
+    for(int i=0; i<L;i++) //z=G-1(T(r)) transfrom function 출력하기 위해
+        {
+            
+            trans_ref[i]=G_inv[trans[i]];
+            
+        }
+
+    
+}
+
+
+
