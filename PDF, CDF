@@ -1,0 +1,61 @@
+
+/*
+ README
+ 이 코드는 grayscale이미지의 PDF와 CDF를 계산하는 코드이다.
+ RGB이미지 input.jpg를 input으로 읽어와 grayscale이미지, input_gray을 생성한다. import한
+ hist_func.h에 정의된 cal_PDF, cal_CDF함수를 이용해서 grayscale이미지의 PDF와 CDF를 계산하고
+ .txt파일 형태로 출력한다. 출력한 PDF와 CDF파일을 통해 이미지의 intensity contrast를 확인할 수 있다. 
+
+ input: input_image(RGB 이미지)
+ output: PDF.txt, CDF.txt, grayscale이미지, RGB이미지
+ */
+
+#include "hist_func.h"
+
+int main() {
+  // CV_LOAD_IMAGE_COLOR 가 opencv 버전4부터는 IMREAD_UNCHANGED로 바뀜
+	Mat input = imread("input.jpg", IMREAD_UNCHANGED);
+	Mat input_gray;
+    
+	cvtColor(input, input_gray, COLOR_RGB2GRAY); // convert RGB to Grayscale
+	
+	// PDF, CDF txt files
+	FILE *f_PDF, *f_CDF;
+	
+    f_PDF=fopen( "PDF.txt", "w+");
+	f_CDF= fopen( "CDF.txt", "w+");
+
+	// each histogram
+	float *PDF = cal_PDF(input_gray); // PDF of Input image(Grayscale) : [L]
+	float *CDF = cal_CDF(input_gray); // CDF of Input image(Grayscale) : [L]
+
+	for (int i = 0; i < L; i++) {
+		// write PDF, CDF
+		fprintf(f_PDF, "%d\t%f\n", i, PDF[i]); // PDF파일 쓰기
+		fprintf(f_CDF, "%d\t%f\n", i, CDF[i]); // CDF파일 쓰기
+	}
+
+	// memory release
+	free(PDF);
+	free(CDF);
+	fclose(f_PDF);
+	fclose(f_CDF);
+	
+	////////////////////// Show each image ///////////////////////
+	
+	namedWindow("RGB", WINDOW_AUTOSIZE);
+	imshow("RGB", input);  // 원본(RGB)이미지 출력
+
+	namedWindow("Grayscale", WINDOW_AUTOSIZE);
+	imshow("Grayscale", input_gray); // grayscale이미지 출력
+
+	//////////////////////////////////////////////////////////////
+
+	waitKey(0);
+
+	return 0;
+}
+
+
+
+
