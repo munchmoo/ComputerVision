@@ -1,0 +1,103 @@
+
+/*
+ README
+이 코드는 input이미지(RGB)를 grayscale이미지 input_gray로 변환하여 이미지 stretching을 진행한다. 
+input_gray(grayscale이미지)의 PDF를 통해 intensity가 치우쳐 있는 것을 확인할 수 있고, linear stetching을 통해 intensity를 stretch-out 시켜준다.
+input: input_image(RGB 이미지)
+output: PDF.txt, trans_func_stretch.txt, stretched_PDF.txt ,grayscale이미지, stretched_grayscale이미지
+ */
+
+
+#include "hist_func.h"
+#include <opencv2/opencv.hpp>
+
+
+void linear_stretching(Mat &input, Mat &stretched, G *trans_func, G x1, G x2, G y1, G y2);
+
+int main() {
+   // CV_LOAD_IMAGE_COLOR 가 opencv 버전4부터는 IMREAD_UNCHANGED로 바뀜
+	Mat input = imread("input.jpg",IMREAD_UNCHANGED); //원본이미지 읽어오기
+	Mat input_gray;
+  
+    
+	cvtColor(input, input_gray, COLOR_RGB2GRAY);	// convert RGB to Grayscale
+
+	Mat stretched = input_gray.clone(); // stretched로 흑백이미지를 복사한다.
+
+	// PDF or transfer function txt files
+	FILE *f_PDF;  // 흑백이미지_PDF
+	FILE *f_stretched_PDF; // Stretched흑백이미지_PDF
+	FILE *f_trans_func_stretch; // transform function
+
+	f_PDF=fopen( "PDF.txt", "w+");
+	f_stretched_PDF=fopen( "stretched_PDF.txt", "w+");
+	f_trans_func_stretch=fopen( "trans_func_stretch.txt", "w+");
+
+	G trans_func_stretch[L] = { 0 };
+   //G 타입은 uchar, 이미지가 CV_8UC3에 해당하기 때문에
+    
+    
+	float *PDF = cal_PDF(input_gray);
+    
+    //linear_stretching함수 호출
+	linear_stretching(input_gray, stretched, trans_func_stretch, 50, 110, 10, 110);	// histogram stretching (x1 ~ x2 -> y1 ~ y2)
+	float *stretched_PDF = cal_PDF(stretched);// stretched PDF
+    
+    
+   
+	for (int i = 0; i < L; i++) {
+		// write PDF
+		fprintf(f_PDF, "%d\t%f\n", i, PDF[i]);
+		fprintf(f_stretched_PDF, "%d\t%f\n", i, stretched_PDF[i]);
+
+		// write transfer functions
+		fprintf(f_trans_func_stretch, "%d\t%d\n", i, trans_func_stretch[i]);
+	}
+
+	// memory release
+	free(PDF);
+	free(stretched_PDF);
+	fclose(f_PDF);
+	fclose(f_stretched_PDF);
+	fclose(f_trans_func_stretch);
+
+	////////////////////// Show each image ///////////////////////
+
+	namedWindow("Grayscale", WINDOW_AUTOSIZE);
+	imshow("Grayscale", input_gray);
+
+	namedWindow("Stretched", WINDOW_AUTOSIZE);
+	imshow("Stretched", stretched);
+
+	//////////////////////////////////////////////////////////////
+
+	waitKey(0);
+
+	return 0;
+}
+
+// histogram stretching (linear method)
+void linear_stretching(Mat &input, Mat &stretched, G *trans_func, G x1, G x2, G y1, G y2) {
+
+	float constant = (y2 - y1) / (float)(x2 - x1); // linear function을 정의하기 위해
+    
+	// compute transfer function
+	for (int i = 0; i < L; i++) {
+		if (i >= 0 && i <= x1)
+			trans_func[i] = (G)(y1 / x1 * i); // (50,10) 지나고 원점지나는 직선
+		else if (i > x1 && i <= x2) // (50-110) 사이에 있는 부분을 stretch해준다.
+			trans_func[i] = (G)(constant * (i - x1) + y1); // linear function에 적용
+		else
+			trans_func[i] = (G)((L - 1 - x2) / (L - 1 - y2) * (i - x2) + y2); // (110,110) 지나고 (255,255)지나는 직선
+	}
+
+	// perform the transfer function
+	for (int i = 0; i < input.rows; i++)
+		for (int j = 0; j < input.cols; j++)
+			stretched.at<G>(i, j) = trans_func[input.at<G>(i, j)]; //(i,j)에 해당하는 intensity를 trans_func에 저장된 변경시킨 intensity값으로 바꾸고 stretched에 저장
+}
+
+
+
+
+
