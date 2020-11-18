@@ -1,0 +1,145 @@
+/*
+ README.txt
+ 이 코드는 원본이미지(RGB)를 grayscale로 변경시킨 것과 reference 이미지를 활용하여 이미지 histogram matching을 진행한다.
+ 결과로 reference이미지와 intensity가 유사하게 이미지가 출력된다.
+intput: 원본이미지(RGB), reference이미지
+Output: 흑백이미지, histogram_matched이미지, PDF.txt, transformfunction.txt  
+*/
+
+#include "hist_func.h"
+
+
+void hist_match(G *trans, G *trans_ref, Mat & matched, Mat &input_ref_gray, float *CDF,float *CDF_ref);
+
+int main() {
+
+	Mat input = imread("koala.jpg", IMREAD_UNCHANGED);  // 원본이미지
+    Mat ref_input= imread("koala_ref.jpg",IMREAD_UNCHANGED); // reference 이미지
+    
+	Mat input_gray;    // 흑백이미지
+    Mat input_ref_gray;    // 흑백ref이미지
+
+	cvtColor(input , input_gray, COLOR_RGB2GRAY);	// convert RGB to Grayscale
+    cvtColor(ref_input , input_ref_gray, COLOR_RGB2GRAY);    // convert RGB to Grayscale
+
+	Mat matched = input_gray.clone();
+
+	// PDF or transfer function txt files
+	FILE *f_PDF;    //원본이미지 PDF
+    FILE *f_ref_PDF; // reference이미지 PDF
+	FILE *f_matched_PDF_gray; // hist_matching된 이미지의 PDF
+	FILE *f_trans_func;    //   transform function
+  
+	
+	f_PDF=fopen( "PDF(match).txt", "w+");
+    f_ref_PDF=fopen( "PDF_ref(match).txt", "w+");
+	f_matched_PDF_gray=fopen( "equalized_PDF_gray(match).txt", "w+");
+    
+	f_trans_func=fopen( "trans_func(match).txt", "w+");
+    
+
+	float *PDF = cal_PDF(input_gray);	// PDF of Input image(Grayscale) : [L]
+	float *CDF = cal_CDF(input_gray);	// CDF of Input image(Grayscale) : [L]
+    
+    float *PDF_ref = cal_PDF(input_ref_gray);    // PDF of Input referece image(Grayscale) : [L]
+    float *CDF_ref = cal_CDF(input_ref_gray);    // CDF of Input reference image(Grayscale) : [L]
+    
+    G trans[L] = { 0 };            // transfer function
+    G trans_ref[L] = { 0 };            // transfer reference function
+
+	
+    hist_match(trans, trans_ref, matched, input_ref_gray,CDF,CDF_ref); // histogram matching
+    
+	float *matched_PDF_gray = cal_PDF(matched);		// equalized PDF (grayscale)
+
+	for (int i = 0; i < L; i++) {
+		// write PDF
+        fprintf(f_PDF, "%d\t%f\n", i, PDF[i]);  // PDF of Input image(Grayscale)
+        fprintf(f_ref_PDF, "%d\t%f\n", i, PDF_ref[i]);  // PDF of Input reference image(Grayscale)
+        fprintf(f_matched_PDF_gray, "%d\t%f\n", i, matched_PDF_gray[i]); // PDF of equalized image(Grayscale)
+
+		// write transfer functions
+        fprintf(f_trans_func, "%d\t%d\n", i, trans_ref[i]);
+	}
+
+	// memory release
+	free(PDF);
+	free(CDF);
+	fclose(f_PDF);
+    fclose(f_ref_PDF);
+	fclose(f_matched_PDF_gray);
+    fclose(f_trans_func);
+
+    
+
+	////////////////////// Show each image ///////////////////////
+
+	namedWindow("Grayscale", WINDOW_AUTOSIZE);
+	imshow("Grayscale", input_ref_gray);   // 흑백이미지 출력
+
+	namedWindow("Matched", WINDOW_AUTOSIZE); //equalized된 흑백이미지 출력
+	imshow("Matched", matched);
+
+	//////////////////////////////////////////////////////////////
+
+	waitKey(0);
+
+	return 0;
+}
+
+
+void hist_match(G *trans, G *trans_ref,Mat &matched, Mat &input_ref_gray, float *CDF, float*CDF_ref){
+    
+   int G_inv[L]={0};
+    bool check[L]={false}; // 값이 대응되어있는지
+    
+    
+    for (int i = 0; i < L; i++)
+    {
+         trans[i] = (G)((L - 1) * CDF[i]);  // s=T(r)=(L-1)CDFr(r) 공식 이용
+          trans_ref[i] = (G)((L - 1) * CDF_ref[i]);  // s=G(z)=(L-1)CDFr(r) 공식 이용
+
+    }
+   
+
+ 
+    // z=G-1(s) 계산하기
+    for(int i=0;i<L;i++) //i는 s
+    {
+          // s값에 대응되는 z값 찾기
+            for(int j=0;j<L;j++) // s가 값이 있는 경우
+            {
+                if(trans_ref[j]==i && check[i]==false) // 여러 z값이 있는 경우 첫 번째거 택한다.
+                {
+                   G_inv[i]=j;
+                    check[i]=true;
+                    break;
+                }
+                
+                    
+                
+            }
+            if(check[i]==false) // s에 대응되는 값이 없는 경우 neighboring하는 거랑 연결
+                G_inv[i]=G_inv[i-1];
+        
+    }
+
+    
+    // perform the transfer function
+    
+        for (int i = 0; i < input_ref_gray.rows; i++)
+            for (int j = 0; j < input_ref_gray.cols; j++)
+            {
+             
+                matched.at<G>(i, j) =G_inv[trans[input_ref_gray.at<G>(i, j)]];
+            }
+
+    for(int i=0; i<L;i++) //z=G-1(T(r)) transfrom function 출력하기 위해
+     {
+         
+         trans_ref[i]=G_inv[trans[i]];
+         
+     }
+    
+}
+
