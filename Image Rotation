@@ -1,0 +1,128 @@
+/*
+ Readme
+이 코드는 원본이미지를 45도 회전 했을 때의 이미지를 output으로 출력한다.  
+Nearest neighborhood과 bilinear interpolation을 사용해서 원본이미지에 근접한 회전된 이미지를 출력하고자 한다. 
+회전 각도를 변화시켜 다양한 각도로 회전한 이미지를 출력할 수 있다.
+ */
+ 
+#include <opencv2/opencv.hpp>
+#include <iostream>
+
+using namespace cv;
+
+template <typename T>
+Mat myrotate(const Mat input, float angle, const char* opt);
+
+int main()
+{
+	Mat input, rotated; // Mat클래스를 통해 input, rotated 행렬 생성
+	
+	// Read each image (이미지 읽기)
+    input = imread("/Users/kimsungheui/Desktop/openSwProject/Skeleton code(assg1)/lena.jpg");
+
+	// Check for invalid input (이미지를 읽어올 수 없는 경우)
+	if (!input.data) {
+		std::cout << "Could not open or find the image" << std::endl;
+		return -1;
+	}
+   
+	// original image
+	namedWindow("image");
+	imshow("image", input);
+
+	rotated = myrotate<Vec3b>(input, 45, "nearest"); // 45도 회전함
+  
+	// rotated image
+	namedWindow("rotated");
+	imshow("rotated", rotated);
+
+
+	waitKey(0);
+
+	return 0;
+}
+
+template <typename T>
+Mat myrotate(const Mat input, float angle, const char* opt) {
+	int row = input.rows;
+	int col = input.cols;
+
+	float radian = angle * CV_PI / 180;
+
+	float sq_row = ceil(row * sin(radian) + col * cos(radian)); //회전했을 때 범위 가로를 가정함
+	float sq_col = ceil(col * sin(radian) + row * cos(radian)); // 회전했을 때 범위 세로를 가정함
+
+   
+   
+	Mat output = Mat::zeros(sq_row, sq_col, input.type());
+     //모든 요소가 0인 sq_row X sq_col 행렬 생성
+    
+    
+	for (int i = 0; i < sq_row; i++) {
+		for (int j = 0; j < sq_col; j++) {
+			float x = (j - sq_col / 2) * cos(radian) - (i - sq_row / 2) * sin(radian) + col / 2;
+			float y = (j - sq_col / 2) * sin(radian) + (i - sq_row / 2) * cos(radian) + row / 2;
+
+            
+         
+			if ((y >= 0) && (y <= (row - 1)) && (x >= 0) && (x <= (col - 1))) {
+                
+				if (!strcmp(opt, "nearest")) {
+                    //float 값인 y,x를 가장 가까운 값으로 결정
+                 
+                    if( abs(ceil(x)-x)>=abs(floor(x)-x))
+                        x=floor(x);
+                    else
+                        x=ceil(x);
+                    
+                    if( abs(ceil(y)-y)>=abs(floor(y)-y))
+                        y=floor(y);
+                    else
+                        y=ceil(y);
+                   
+                    output.at<Vec3b>(i, j) = input.at<Vec3b>(y, x); // intensity value지정
+               
+				}
+				else if (!strcmp(opt, "bilinear")) {
+                    // 인접한 4개의 pixel과의 거리와 intensity value이용
+             
+                    float y1 = floor(y);
+                    float y2 = ceil(y);
+                    float x1 = floor(x);
+                    float x2 = ceil(x);
+                    
+                    float mu = y - y1;
+                    float lambda = x - x1;
+                    
+                    float fx1=lambda;
+                    float fx2=1-lambda;
+                    float fy1=mu;
+                    float fy2=1-mu;
+
+                    float w1=fx2*fy2;
+                    float w2=fx1*fy2;
+                    float w3=fx2*fy1;
+                    float w4=fx1*fy1;
+               
+                    
+                        
+                        Vec3b P1=input.at<cv::Vec3b>(y1,x1);
+                        Vec3b P2=input.at<cv::Vec3b>(y1,x2);
+                        Vec3b P3=input.at<cv::Vec3b>(y2,x1);
+                        Vec3b P4=input.at<cv::Vec3b>(y2,x2);
+                        
+                     output.at<cv::Vec3b>(i,j) = w1*P1+w2*P2+w3*P3+w4*P4;
+                        
+                    
+
+				}
+			}
+		}
+	}
+    
+  
+	return output;
+}
+
+
+
