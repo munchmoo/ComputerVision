@@ -1,0 +1,83 @@
+/*
+ README.txt
+ 이 코드는 이미지 intensity contrast를 높여주는 방법으로 histogram equalization을 진행한다. 흑백이미지와 histogram equalized된 이미지가 결과로 출력된다.
+
+ input: input이미지(RGB)
+ output:PDF.txt, equalized_PDF_gray.txt, trans_func_eq.txt, grayscale이미지, equalized이미지
+ 
+ */
+#include "hist_func.h"
+
+void hist_eq(Mat &input, Mat &equalized, G *trans_func, float *CDF);
+
+int main() {
+
+	Mat input = imread("input.jpg", IMREAD_UNCHANGED);  // 원본이미지
+	Mat input_gray;    // 흑백이미지
+
+	cvtColor(input, input_gray, COLOR_RGB2GRAY);	// convert RGB to Grayscale
+
+	Mat equalized = input_gray.clone();
+
+	// PDF or transfer function txt files
+	FILE *f_PDF;
+	FILE *f_equalized_PDF_gray;
+	FILE *f_trans_func_eq;
+	
+	f_PDF=fopen( "PDF.txt", "w+");
+	f_equalized_PDF_gray=fopen( "equalized_PDF_gray.txt", "w+");
+	f_trans_func_eq=fopen( "trans_func_eq.txt", "w+");
+
+	float *PDF = cal_PDF(input_gray);	// PDF of Input image(Grayscale) : [L]
+	float *CDF = cal_CDF(input_gray);	// CDF of Input image(Grayscale) : [L]
+
+	G trans_func_eq[L] = { 0 };			// transfer function
+
+	hist_eq(input_gray, equalized, trans_func_eq, CDF); // histogram equalization on grayscale image
+	float *equalized_PDF_gray = cal_PDF(equalized);	// equalized PDF (grayscale)
+
+	for (int i = 0; i < L; i++) {
+		// write PDF
+        fprintf(f_PDF, "%d\t%f\n", i, PDF[i]);  // PDF of Input image(Grayscale)
+        fprintf(f_equalized_PDF_gray, "%d\t%f\n", i, equalized_PDF_gray[i]); // PDF of equalized image(Grayscale)
+
+		// write transfer functions
+		fprintf(f_trans_func_eq, "%d\t%d\n", i, trans_func_eq[i]);
+	}
+
+	// memory release
+	free(PDF);
+	free(CDF);
+	fclose(f_PDF);
+	fclose(f_equalized_PDF_gray);
+	fclose(f_trans_func_eq);
+
+	////////////////////// Show each image ///////////////////////
+
+	namedWindow("Grayscale", WINDOW_AUTOSIZE);
+	imshow("Grayscale", input_gray);   // 흑백이미지 출력
+
+	namedWindow("Equalized", WINDOW_AUTOSIZE); //equalized된 흑백이미지 출력
+	imshow("Equalized", equalized);
+
+	//////////////////////////////////////////////////////////////
+
+	waitKey(0);
+
+	return 0;
+}
+
+// histogram equalization
+void hist_eq(Mat &input, Mat &equalized, G *trans_func, float *CDF) {
+
+	// compute transfer function
+	for (int i = 0; i < L; i++)
+		trans_func[i] = (G)((L - 1) * CDF[i]);  // s=T(r)=(L-1)CDFr(r) 공식 이용
+
+	// perform the transfer function
+	for (int i = 0; i < input.rows; i++)
+		for (int j = 0; j < input.cols; j++)
+			equalized.at<G>(i, j) = trans_func[input.at<G>(i, j)]; // equalization된 intensity로 변경
+}
+
+
